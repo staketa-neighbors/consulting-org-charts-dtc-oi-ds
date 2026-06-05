@@ -1,0 +1,1430 @@
+<html lang="ja"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>組織図エディター</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  background: #eef2f7;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* ── ツールバー ── */
+.toolbar {
+  background: linear-gradient(135deg, #1e3a6e, #2c55a0);
+  color: white;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 300;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+}
+.toolbar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-right: auto;
+  letter-spacing: 0.5px;
+}
+.tb-btn {
+  background: rgba(255,255,255,0.18);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.35);
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.2s, transform 0.1s;
+  white-space: nowrap;
+}
+.tb-btn:hover { background: rgba(255,255,255,0.32); transform: translateY(-1px); }
+.tb-btn:active { transform: translateY(0); }
+.tb-btn.green  { background: #27ae60; border-color: #27ae60; }
+.tb-btn.green:hover { background: #219a52; }
+
+/* ── ズームコントロール ── */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 20px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.tb-btn.zoom-btn {
+  padding: 4px 10px;
+  font-size: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 14px;
+}
+
+/* ── チャートエリア ── */
+#chartWrap {
+  padding: 50px 40px 80px;
+  overflow: auto;
+  min-height: calc(100vh - 52px);
+  position: relative;
+}
+#chartScaleWrap {
+  display: inline-block;
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+#chartInner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  min-width: max-content;
+}
+
+/* ── SVGオーバーレイ ── */
+#linesSvg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 0;
+}
+
+/* ── ツリーレイアウト ── */
+.tree-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.tree-children {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0;
+  margin-top: 50px;
+}
+.tree-child-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 16px;
+}
+
+/* ── カード ── */
+.org-card {
+  position: relative;
+  background: linear-gradient(160deg, #4a78c4 0%, #2f5aab 100%);
+  color: white;
+  border-radius: 10px;
+  padding: 11px 14px 10px;
+  min-width: 110px;
+  max-width: 150px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+  transition: transform 0.15s, box-shadow 0.15s, border 0.15s;
+  border: 2px solid transparent;
+  z-index: 1;
+  user-select: none;
+}
+.org-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+}
+.org-card.root {
+  background: linear-gradient(160deg, #1e4fa0, #152f6a);
+  min-width: 130px;
+  font-size: 15px;
+}
+.org-card.drag-over {
+  border-color: #f1c40f;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 3px rgba(241,196,15,0.4);
+}
+.org-card.dragging { opacity: 0.45; }
+
+.card-dept  { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.card-title { font-size: 10px; opacity: 0.82; margin-top: 2px; }
+.card-name  { font-size: 12px; font-weight: 600; margin-top: 2px; }
+.card-urls  { margin-top: 5px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.card-url   {
+  font-size: 10px;
+  background: rgba(255,255,255,0.22);
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: white;
+  transition: background 0.15s;
+}
+.card-url:hover { background: rgba(255,255,255,0.4); }
+
+/* アクションボタン (hover時のみ表示) */
+.card-actions {
+  position: absolute;
+  top: -10px; right: -10px;
+  display: none;
+  gap: 3px;
+  z-index: 10;
+}
+.org-card:hover .card-actions { display: flex; }
+.act-btn {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid white;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  transition: transform 0.1s;
+  font-family: inherit;
+}
+.act-btn:hover { transform: scale(1.15); }
+.act-btn.add  { background: #27ae60; color: white; }
+.act-btn.edit { background: #2980b9; color: white; }
+.act-btn.del  { background: #c0392b; color: white; }
+
+/* ── ドラッグヒント ── */
+.drop-hint {
+  font-size: 11px;
+  color: #7f8c8d;
+  text-align: center;
+  margin-top: 8px;
+  letter-spacing: 0.3px;
+}
+
+/* ── モーダル ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,20,50,0.55);
+  z-index: 500;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white;
+  border-radius: 14px;
+  padding: 28px 30px;
+  width: 440px;
+  max-width: 96vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  animation: fadeUp 0.18s ease;
+}
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(12px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.modal h2 {
+  font-size: 17px;
+  color: #1e3a6e;
+  margin-bottom: 18px;
+  border-bottom: 2px solid #eef2f7;
+  padding-bottom: 10px;
+}
+.form-row { margin-bottom: 13px; }
+.form-row label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a5568;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+}
+.form-row input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid #dde3ed;
+  border-radius: 7px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #f8fafc;
+}
+.form-row input:focus {
+  outline: none;
+  border-color: #2c55a0;
+  box-shadow: 0 0 0 3px rgba(44,85,160,0.12);
+  background: white;
+}
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.modal-btn {
+  padding: 9px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.1s;
+}
+.modal-btn:active { transform: scale(0.97); }
+.modal-btn.save   { background: #1e3a6e; color: white; }
+.modal-btn.save:hover { background: #2c55a0; }
+.modal-btn.cancel { background: #eef2f7; color: #4a5568; }
+.modal-btn.cancel:hover { background: #dde3ed; }
+
+/* ── 確認ダイアログ ── */
+.confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,20,50,0.5);
+  z-index: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.confirm-overlay.open { display: flex; }
+.confirm-box {
+  background: white;
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 340px;
+  max-width: 92vw;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  text-align: center;
+}
+.confirm-box p { font-size: 14px; color: #333; margin-bottom: 20px; line-height: 1.6; }
+.confirm-btns { display: flex; gap: 10px; justify-content: center; }
+.conf-btn {
+  padding: 8px 20px; border-radius: 8px; border: none;
+  cursor: pointer; font-size: 14px; font-weight: 700; font-family: inherit;
+}
+.conf-btn.yes { background: #c0392b; color: white; }
+.conf-btn.yes:hover { background: #a93226; }
+.conf-btn.no  { background: #eef2f7; color: #555; }
+.conf-btn.no:hover  { background: #dde3ed; }
+
+/* ── トースト ── */
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e3a6e;
+  color: white;
+  padding: 10px 22px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  z-index: 999;
+  pointer-events: none;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+</style>
+<style media="print">
+  .toolbar, .drop-hint, .zoom-controls { display: none !important; }
+  body { background: white; }
+  #chartWrap { padding: 20px; }
+  #chartScaleWrap { transform: none !important; }
+  .org-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style></head>
+<body>
+
+<!-- Notion同期パネル -->
+<div id="notionPanel" style="display:none; position:fixed; inset:0; background:rgba(10,20,50,0.6); z-index:400; align-items:center; justify-content:center; backdrop-filter:blur(3px);">
+  <div style="background:white; border-radius:14px; padding:30px; width:460px; max-width:95vw; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h2 style="color:#1e3a6e; font-size:17px; margin-bottom:6px;">🔗 Notionと同期</h2>
+    <p style="font-size:12px; color:#666; margin-bottom:20px; line-height:1.6;">NotionのデータベースからリアルタイムでデータをAPIで取得して組織図を更新します。</p>
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:12px; font-weight:700; color:#4a5568; margin-bottom:4px;">Notion APIキー <span style="color:#c0392b">*</span></label>
+      <input id="notionToken" type="password" placeholder="secret_xxxxxxxxxxxx..." style="width:100%; padding:9px 12px; border:1.5px solid #dde3ed; border-radius:7px; font-size:13px; font-family:monospace; background:#f8fafc;">
+      <p style="font-size:11px; color:#888; margin-top:4px;">取得場所: <a href="https://www.notion.so/my-integrations" target="_blank" style="color:#2c55a0;">notion.so/my-integrations</a></p>
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:12px; font-weight:700; color:#4a5568; margin-bottom:4px;">データベースID</label>
+      <input id="notionDbId" type="text" value="32e69c8a-62b1-801d-aff0-ee3475fb5f39" style="width:100%; padding:9px 12px; border:1.5px solid #dde3ed; border-radius:7px; font-size:12px; font-family:monospace; background:#f8fafc;">
+    </div>
+    <div id="notionStatus" style="display:none; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button onclick="closeNotionPanel()" style="padding:9px 20px; border-radius:8px; border:none; cursor:pointer; font-size:14px; font-weight:700; background:#eef2f7; color:#555; font-family:inherit;">キャンセル</button>
+      <button onclick="syncFromNotion()" id="syncBtn" style="padding:9px 22px; border-radius:8px; border:none; cursor:pointer; font-size:14px; font-weight:700; background:#1e3a6e; color:white; font-family:inherit;">同期する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ツールバー -->
+<div class="toolbar">
+  <h1>🏢 組織図エディター</h1>
+  <div class="zoom-controls">
+    <button class="tb-btn zoom-btn" onclick="zoomOut()" title="縮小">－</button>
+    <span id="zoomLabel" style="font-size:12px;min-width:42px;text-align:center;">100%</span>
+    <button class="tb-btn zoom-btn" onclick="zoomIn()" title="拡大">＋</button>
+    <button class="tb-btn" onclick="fitAll()" title="全体を画面に収める">🔍 全体表示</button>
+  </div>
+  <button class="tb-btn" style="background:#6c3483; border-color:#6c3483;" onclick="openNotionPanel()" title="Notionデータベースから同期">🔗 Notion同期</button>
+  <button class="tb-btn" onclick="exportJSON()" title="JSON形式で保存">💾 保存 (JSON)</button>
+  <button class="tb-btn" onclick="exportHTML()" title="現在の組織図データを埋め込んだHTMLで保存" style="background:#d35400; border-color:#d35400;">📄 保存 (HTML)</button>
+  <button class="tb-btn" onclick="triggerImport()" title="JSONから読込">📂 読込 (JSON)</button>
+  <button class="tb-btn green" onclick="printChart()" title="印刷・PDF出力">🖨 印刷 / PDF</button>
+</div>
+
+<!-- チャートエリア -->
+<div id="chartWrap">
+  <div id="chartScaleWrap">
+  <div id="chartInner">
+    <svg id="linesSvg" width="2929" height="335"><line x1="1464.5750007629395" y1="95.70000457763672" x2="1464.5750007629395" y2="120.70000267028809" stroke="#7a9fd4" stroke-width="2"></line><line x1="319.70000076293945" y1="120.70000267028809" x2="2683.9500732421875" y2="120.70000267028809" stroke="#7a9fd4" stroke-width="2"></line><line x1="319.70000076293945" y1="120.70000267028809" x2="319.70000076293945" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="868.4124984741211" y1="120.70000267028809" x2="868.4124984741211" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="1326.4124908447266" y1="120.70000267028809" x2="1326.4124908447266" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="1646.412498474121" y1="120.70000267028809" x2="1646.412498474121" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="1838.1000061035156" y1="120.70000267028809" x2="1838.1000061035156" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="2096.7999877929688" y1="120.70000267028809" x2="2096.7999877929688" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="2346.7625122070312" y1="120.70000267028809" x2="2346.7625122070312" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="2683.9500732421875" y1="120.70000267028809" x2="2683.9500732421875" y2="145.70000076293945" stroke="#7a9fd4" stroke-width="2"></line><line x1="319.70000076293945" y1="186.8000030517578" x2="319.70000076293945" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="87" y1="211.7999973297119" x2="552.4124755859375" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="87" y1="211.7999973297119" x2="87" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="248.7062530517578" y1="211.7999973297119" x2="248.7062530517578" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="410.4124755859375" y1="211.7999973297119" x2="410.4124755859375" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="552.4124755859375" y1="211.7999973297119" x2="552.4124755859375" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="868.4124984741211" y1="186.8000030517578" x2="868.4124984741211" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="726.4124755859375" y1="211.7999973297119" x2="1010.4125061035156" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="726.4124755859375" y1="211.7999973297119" x2="726.4124755859375" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="868.4124755859375" y1="211.7999973297119" x2="868.4124755859375" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="1010.4125061035156" y1="211.7999973297119" x2="1010.4125061035156" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="1326.4124908447266" y1="203.70000076293945" x2="1326.4124908447266" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="1184.4125061035156" y1="228.70000839233398" x2="1468.412498474121" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="1184.4125061035156" y1="228.70000839233398" x2="1184.4125061035156" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="1326.4124908447266" y1="228.70000839233398" x2="1326.4124908447266" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="1468.412498474121" y1="228.70000839233398" x2="1468.412498474121" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="1646.412498474121" y1="203.70000076293945" x2="1646.412498474121" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="1646.40625" y1="228.70000839233398" x2="1646.40625" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="1838.1000061035156" y1="186.8000030517578" x2="1838.1000061035156" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="1838.1062545776367" y1="211.7999973297119" x2="1838.1062545776367" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="2096.7999877929688" y1="186.8000030517578" x2="2096.7999877929688" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="2025.7999877929688" y1="211.7999973297119" x2="2167.7999877929688" y2="211.7999973297119" stroke="#7a9fd4" stroke-width="2"></line><line x1="2025.7999877929688" y1="211.7999973297119" x2="2025.7999877929688" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="2167.7999877929688" y1="211.7999973297119" x2="2167.7999877929688" y2="236.79999160766602" stroke="#7a9fd4" stroke-width="2"></line><line x1="2346.7625122070312" y1="203.70000076293945" x2="2346.7625122070312" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="2346.7687377929688" y1="228.70000839233398" x2="2346.7687377929688" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="2683.9500732421875" y1="203.70000076293945" x2="2683.9500732421875" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="2525.7374877929688" y1="228.70000839233398" x2="2825.950050354004" y2="228.70000839233398" stroke="#7a9fd4" stroke-width="2"></line><line x1="2525.7374877929688" y1="228.70000839233398" x2="2525.7374877929688" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="2667.737548828125" y1="228.70000839233398" x2="2667.737548828125" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line><line x1="2825.950050354004" y1="228.70000839233398" x2="2825.950050354004" y2="253.70001602172852" stroke="#7a9fd4" stroke-width="2"></line></svg>
+    <div id="treeRoot"><div class="tree-node" id="wrap-root"><div class="org-card root" id="card-root" draggable="false"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button></div><div class="card-dept">OI&amp;DS</div><div class="card-title">Lead Partner</div><div class="card-name">Akaishi Akira</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html" target="_blank">URL①</a><a class="card-url" href="https://www.deloitte.com/jp/ja/services/consulting/services/operations-transformation.html" target="_blank">URL②</a></div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n1"><div class="org-card" id="card-n1" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Smart Mobility</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n2"><div class="org-card" id="card-n2" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Ide Kiyoshi</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.kiyoshi-ide+360f01cc.html" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n4"><div class="org-card" id="card-n4" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Takayanagi Kazuyoshi</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.yoshikazu-takayanagi+5028092e.html" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n22"><div class="org-card" id="card-n22" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Yoshihara</div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n23"><div class="org-card" id="card-n23" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Shiro</div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n6"><div class="org-card" id="card-n6" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Smart Value Chaim</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n7"><div class="org-card" id="card-n7" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Ide Kiyoshi</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.kiyoshi-ide+360f01cc.html" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n9"><div class="org-card" id="card-n9" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Shiro</div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n24"><div class="org-card" id="card-n24" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Ono</div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n11"><div class="org-card" id="card-n11" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Circular Industry / Agriculture&amp;Food</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n12"><div class="org-card" id="card-n12" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Yoshihara</div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n14"><div class="org-card" id="card-n14" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Takagi</div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n25"><div class="org-card" id="card-n25" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Sakaguchi</div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n17"><div class="org-card" id="card-n17" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Smart Finance / Web3</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n26"><div class="org-card" id="card-n26" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Akahoshi Hiroki</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.hiroki-akahoshi+6db2095e.html" target="_blank">URL①</a></div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n18"><div class="org-card" id="card-n18" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Smart City</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n27"><div class="org-card" id="card-n27" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Matsuyama Tomoki</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.tomoki-matsuyama+a3788a1a.html" target="_blank">URL①</a></div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n19"><div class="org-card" id="card-n19" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">技術戦略</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n28"><div class="org-card" id="card-n28" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Akaishi Akira</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n29"><div class="org-card" id="card-n29" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Ochi</div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n20"><div class="org-card" id="card-n20" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Operation Transformation</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n30"><div class="org-card" id="card-n30" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Takasago Tetsuo</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.tetsuotakasago+3cc2bfbe.html" target="_blank">URL①</a></div></div></div></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n21"><div class="org-card" id="card-n21" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Deeptech＆Platform</div></div><div class="tree-children"><div class="tree-child-col"><div class="tree-node" id="wrap-n31"><div class="org-card" id="card-n31" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Partner</div><div class="card-name">Akaishi Akira</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n32"><div class="org-card" id="card-n32" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">不明</div><div class="card-name">Kyon</div><div class="card-urls"><a class="card-url" href="https://www.linkedin.com/in/kyon-mm-723870113/" target="_blank">URL①</a></div></div></div></div><div class="tree-child-col"><div class="tree-node" id="wrap-n33"><div class="org-card" id="card-n33" draggable="true"><div class="card-actions"><button class="act-btn edit" title="編集">✎</button><button class="act-btn add" title="子ノードを追加">+</button><button class="act-btn del" title="削除">✕</button></div><div class="card-dept">Managing Director</div><div class="card-name">Takei Akito</div><div class="card-urls"><a class="card-url" href="https://www.deloitte.com/jp/ja/about/people/profiles.akito-takei+e25cb699.html" target="_blank">URL①</a></div></div></div></div></div></div></div></div></div></div>
+  </div>
+  </div>
+</div>
+<div class="drop-hint" style="text-align:center; padding-bottom:24px;">
+  💡 カードをドラッグして別のカードにドロップすると、その下に移動できます
+</div>
+
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="editModal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <h2 id="modalHeading">編集: 不明</h2>
+    <div class="form-row">
+      <label>部署名 / 役割名 <span style="color:#c0392b">*</span></label>
+      <input type="text" id="fDept" placeholder="例: 営業部、社長" style="">
+    </div>
+    <div class="form-row">
+      <label>役職</label>
+      <input type="text" id="fTitle" placeholder="例: 部長、課長、担当">
+    </div>
+    <div class="form-row">
+      <label>氏名</label>
+      <input type="text" id="fName" placeholder="例: 山田 太郎">
+    </div>
+    <div class="form-row">
+      <label>URL ①</label>
+      <input type="text" id="fUrl1" placeholder="https://...">
+    </div>
+    <div class="form-row">
+      <label>URL ②</label>
+      <input type="text" id="fUrl2" placeholder="https://...">
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn cancel" onclick="closeModal()">キャンセル</button>
+      <button class="modal-btn save" onclick="saveEdit()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 削除確認ダイアログ -->
+<div class="confirm-overlay" id="confirmDlg">
+  <div class="confirm-box">
+    <p id="confirmMsg">「○○係」を削除しますか？</p>
+    <div class="confirm-btns">
+      <button class="conf-btn no" onclick="closeConfirm()">キャンセル</button>
+      <button class="conf-btn yes" onclick="confirmYes()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- JSONインポート用 -->
+<input type="file" id="jsonInput" accept=".json" style="display:none" onchange="handleImport(event)">
+
+<!-- トースト通知 -->
+<div class="toast" id="toast">✅ 保存しました</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// データモデル
+// ═══════════════════════════════════════════════════
+
+let _id = 1;
+const uid = () => 'n' + (_id++);
+
+// ── Notion同期データ（sync-notion.pyが自動で上書きします）──
+let notionSyncData = {
+  "id": "root",
+  "dept": "OI&DS",
+  "title": "Lead Partner",
+  "name": "Akaishi Akira",
+  "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html",
+  "url2": "https://www.deloitte.com/jp/ja/services/consulting/services/operations-transformation.html",
+  "children": [
+    {
+      "id": "n1",
+      "dept": "Smart Mobility",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n2",
+          "dept": "Partner",
+          "title": "",
+          "name": "Ide Kiyoshi",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.kiyoshi-ide+360f01cc.html",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n4",
+          "dept": "Partner",
+          "title": "",
+          "name": "Takayanagi Kazuyoshi",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.yoshikazu-takayanagi+5028092e.html",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n22",
+          "dept": "不明",
+          "title": "",
+          "name": "Yoshihara",
+          "url1": "",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n23",
+          "dept": "不明",
+          "title": "",
+          "name": "Shiro",
+          "url1": "",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n6",
+      "dept": "Smart Value Chaim",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n7",
+          "dept": "Partner",
+          "title": "",
+          "name": "Ide Kiyoshi",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.kiyoshi-ide+360f01cc.html",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n9",
+          "dept": "不明",
+          "title": "",
+          "name": "Shiro",
+          "url1": "",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n24",
+          "dept": "不明",
+          "title": "",
+          "name": "Ono",
+          "url1": "",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n11",
+      "dept": "Circular Industry / Agriculture&Food",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n12",
+          "dept": "不明",
+          "title": "",
+          "name": "Yoshihara",
+          "url1": "",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n14",
+          "dept": "不明",
+          "title": "",
+          "name": "Takagi",
+          "url1": "",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n25",
+          "dept": "不明",
+          "title": "",
+          "name": "Sakaguchi",
+          "url1": "",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n17",
+      "dept": "Smart Finance / Web3",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n26",
+          "dept": "Partner",
+          "title": "",
+          "name": "Akahoshi Hiroki",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.hiroki-akahoshi+6db2095e.html",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n18",
+      "dept": "Smart City",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n27",
+          "dept": "Partner",
+          "title": "",
+          "name": "Matsuyama Tomoki",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.tomoki-matsuyama+a3788a1a.html",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n19",
+      "dept": "技術戦略",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n28",
+          "dept": "Partner",
+          "title": "",
+          "name": "Akaishi Akira",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n29",
+          "dept": "不明",
+          "title": "",
+          "name": "Ochi",
+          "url1": "",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n20",
+      "dept": "Operation Transformation",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n30",
+          "dept": "Partner",
+          "title": "",
+          "name": "Takasago Tetsuo",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.tetsuotakasago+3cc2bfbe.html",
+          "url2": "",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n21",
+      "dept": "Deeptech＆Platform",
+      "title": "",
+      "name": "",
+      "url1": "",
+      "url2": "",
+      "children": [
+        {
+          "id": "n31",
+          "dept": "Partner",
+          "title": "",
+          "name": "Akaishi Akira",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.akira-akaishi+4196dba5.html",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n32",
+          "dept": "不明",
+          "title": "",
+          "name": "Kyon",
+          "url1": "https://www.linkedin.com/in/kyon-mm-723870113/",
+          "url2": "",
+          "children": []
+        },
+        {
+          "id": "n33",
+          "dept": "Managing Director",
+          "title": "",
+          "name": "Takei Akito",
+          "url1": "https://www.deloitte.com/jp/ja/about/people/profiles.akito-takei+e25cb699.html",
+          "url2": "",
+          "children": []
+        }
+      ]
+    }
+  ]
+}; /* __NOTION_SYNC_DATA__ */
+
+let tree = notionSyncData || {
+  id: 'root', dept: '社長', title: '', name: '', url1: '', url2: '',
+  children: [
+    {
+      id: uid(), dept: '営業部', title: '部長', name: '今野', url1: '', url2: '',
+      children: [
+        {
+          id: uid(), dept: '営業一課', title: '課長', name: '島', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        },
+        {
+          id: uid(), dept: '営業二課', title: '課長', name: '野村', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        }
+      ]
+    },
+    {
+      id: uid(), dept: '総務部', title: '部長', name: '高木', url1: '', url2: '',
+      children: [
+        {
+          id: uid(), dept: '経理課', title: '課長', name: '高橋', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        },
+        {
+          id: uid(), dept: '厚生課', title: '課長', name: '吉田', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        }
+      ]
+    },
+    {
+      id: uid(), dept: '人事部', title: '部長', name: '齊藤', url1: '', url2: '',
+      children: [
+        {
+          id: uid(), dept: '人事課', title: '課長', name: '戸田', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        },
+        {
+          id: uid(), dept: '教育課', title: '課長', name: '伊藤', url1: '', url2: '',
+          children: [
+            { id: uid(), dept: '○○係', title: '担当', name: '○○', url1: '', url2: '', children: [] }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+// ═══════════════════════════════════════════════════
+// ツリー操作ユーティリティ
+// ═══════════════════════════════════════════════════
+
+function findNode(id, node = tree) {
+  if (node.id === id) return node;
+  for (const c of node.children) {
+    const f = findNode(id, c);
+    if (f) return f;
+  }
+  return null;
+}
+
+function findParent(id, node = tree, par = null) {
+  if (node.id === id) return par;
+  for (const c of node.children) {
+    const f = findParent(id, c, node);
+    if (f !== undefined) return f;
+  }
+  return undefined;
+}
+
+function isDescendant(ancestorId, targetId) {
+  const anc = findNode(ancestorId);
+  if (!anc) return false;
+  for (const c of anc.children) {
+    if (c.id === targetId || isDescendant(c.id, targetId)) return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+// レンダリング
+// ═══════════════════════════════════════════════════
+
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith('on') && typeof v === 'function') {
+      el.addEventListener(k.slice(2), v);
+    } else if (k === 'cls') {
+      el.className = v;
+    } else if (k === 'html') {
+      el.innerHTML = v;
+    } else {
+      el.setAttribute(k, v);
+    }
+  }
+  for (const ch of children) {
+    if (ch == null) continue;
+    if (typeof ch === 'string') el.appendChild(document.createTextNode(ch));
+    else el.appendChild(ch);
+  }
+  return el;
+}
+
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function makeCard(node, isRoot) {
+  // URL links
+  const urls = [];
+  if (node.url1) urls.push(h('a', { cls:'card-url', href: node.url1, target:'_blank', onclick: e => e.stopPropagation() }, 'URL①'));
+  if (node.url2) urls.push(h('a', { cls:'card-url', href: node.url2, target:'_blank', onclick: e => e.stopPropagation() }, 'URL②'));
+
+  // Content elements
+  const contents = [h('div', { cls:'card-dept' }, node.dept)];
+  if (node.title) contents.push(h('div', { cls:'card-title' }, node.title));
+  if (node.name)  contents.push(h('div', { cls:'card-name' }, node.name));
+  if (urls.length) {
+    const urlRow = h('div', { cls:'card-urls' });
+    urls.forEach(u => urlRow.appendChild(u));
+    contents.push(urlRow);
+  }
+
+  // Action buttons
+  const actions = h('div', { cls:'card-actions' });
+  const editBtn = h('button', { cls:'act-btn edit', title:'編集', onclick: e => { e.stopPropagation(); openEdit(node.id); } }, '✎');
+  const addBtn  = h('button', { cls:'act-btn add',  title:'子ノードを追加', onclick: e => { e.stopPropagation(); addChild(node.id); } }, '+');
+  actions.appendChild(editBtn);
+  actions.appendChild(addBtn);
+  if (!isRoot) {
+    const delBtn = h('button', { cls:'act-btn del', title:'削除', onclick: e => { e.stopPropagation(); confirmDelete(node.id); } }, '✕');
+    actions.appendChild(delBtn);
+  }
+
+  const card = h('div', {
+    cls: 'org-card' + (isRoot ? ' root' : ''),
+    id: 'card-' + node.id,
+    draggable: isRoot ? 'false' : 'true',
+    onclick: () => openEdit(node.id),
+    ondragstart: e => onDragStart(e, node.id),
+    ondragover: e => onDragOver(e, node.id),
+    ondragleave: e => onDragLeave(e, node.id),
+    ondrop: e => onDrop(e, node.id),
+  });
+  card.appendChild(actions);
+  contents.forEach(c => card.appendChild(c));
+  return card;
+}
+
+function buildTree(node, isRoot = false) {
+  const wrapper = h('div', { cls:'tree-node', id:'wrap-'+node.id });
+  wrapper.appendChild(makeCard(node, isRoot));
+
+  if (node.children && node.children.length > 0) {
+    const childRow = h('div', { cls:'tree-children' });
+    for (const child of node.children) {
+      const col = h('div', { cls:'tree-child-col' });
+      col.appendChild(buildTree(child, false));
+      childRow.appendChild(col);
+    }
+    wrapper.appendChild(childRow);
+  }
+  return wrapper;
+}
+
+function render() {
+  const root = document.getElementById('treeRoot');
+  root.innerHTML = '';
+  root.appendChild(buildTree(tree, true));
+  requestAnimationFrame(() => drawLines());
+}
+
+// ═══════════════════════════════════════════════════
+// SVG接続線
+// ═══════════════════════════════════════════════════
+
+function drawLines() {
+  const svg = document.getElementById('linesSvg');
+  svg.innerHTML = '';
+
+  const wrap = document.getElementById('chartInner');
+  const base = wrap.getBoundingClientRect();
+
+  function pos(el) {
+    const r = el.getBoundingClientRect();
+    return {
+      top:   r.top    - base.top,
+      left:  r.left   - base.left,
+      right: r.right  - base.left,
+      bottom:r.bottom - base.top,
+      cx:    r.left   - base.left + r.width / 2,
+      cy:    r.top    - base.top  + r.height / 2,
+    };
+  }
+
+  function line(x1, y1, x2, y2) {
+    const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    l.setAttribute('stroke', '#7a9fd4');
+    l.setAttribute('stroke-width', '2');
+    svg.appendChild(l);
+  }
+
+  function draw(node) {
+    if (!node.children || node.children.length === 0) return;
+
+    const parentCard = document.getElementById('card-' + node.id);
+    if (!parentCard) return;
+
+    const childCards = node.children
+      .map(c => document.getElementById('card-' + c.id))
+      .filter(Boolean);
+    if (!childCards.length) return;
+
+    const pp = pos(parentCard);
+    const childPositions = childCards.map(c => pos(c));
+
+    const midY = pp.bottom + (childPositions[0].top - pp.bottom) / 2;
+
+    // 親から中点への縦線
+    line(pp.cx, pp.bottom, pp.cx, midY);
+
+    if (childPositions.length > 1) {
+      // 水平線
+      const minCx = Math.min(...childPositions.map(p => p.cx));
+      const maxCx = Math.max(...childPositions.map(p => p.cx));
+      line(minCx, midY, maxCx, midY);
+    }
+
+    // 各子への縦線
+    for (const cp of childPositions) {
+      line(cp.cx, midY, cp.cx, cp.top);
+    }
+
+    // 再帰
+    node.children.forEach(draw);
+  }
+
+  draw(tree);
+
+  // SVGサイズを内部コンテンツに合わせる
+  const inner = document.getElementById('chartInner');
+  svg.setAttribute('width',  inner.scrollWidth);
+  svg.setAttribute('height', inner.scrollHeight);
+}
+
+// ═══════════════════════════════════════════════════
+// ドラッグ & ドロップ
+// ═══════════════════════════════════════════════════
+
+let dragId = null;
+
+function onDragStart(e, id) {
+  dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const c = document.getElementById('card-' + id);
+    if (c) c.classList.add('dragging');
+  }, 0);
+}
+
+function onDragOver(e, id) {
+  e.preventDefault();
+  if (dragId && dragId !== id) {
+    const c = document.getElementById('card-' + id);
+    if (c) c.classList.add('drag-over');
+  }
+}
+
+function onDragLeave(e, id) {
+  const c = document.getElementById('card-' + id);
+  if (c) c.classList.remove('drag-over');
+}
+
+function onDrop(e, newParentId) {
+  e.preventDefault();
+  const c = document.getElementById('card-' + newParentId);
+  if (c) c.classList.remove('drag-over');
+
+  if (!dragId || dragId === newParentId || dragId === 'root') {
+    dragId = null; return;
+  }
+
+  // 子孫には移動不可
+  if (isDescendant(dragId, newParentId)) {
+    showToast('⚠️ 自身の子孫には移動できません');
+    dragId = null; return;
+  }
+
+  const moved = findNode(dragId);
+  const oldPar = findParent(dragId);
+  if (!moved || !oldPar) { dragId = null; return; }
+
+  // 旧親から除去
+  oldPar.children = oldPar.children.filter(c => c.id !== dragId);
+  // 新親に追加
+  const newPar = findNode(newParentId);
+  if (newPar) newPar.children.push(moved);
+
+  dragId = null;
+  render();
+  showToast('✅ 移動しました');
+}
+
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+});
+
+// ═══════════════════════════════════════════════════
+// ノード編集
+// ═══════════════════════════════════════════════════
+
+let editId = null;
+
+function openEdit(id) {
+  editId = id;
+  const n = findNode(id);
+  if (!n) return;
+  document.getElementById('modalHeading').textContent = '編集: ' + n.dept;
+  document.getElementById('fDept').value  = n.dept  || '';
+  document.getElementById('fTitle').value = n.title || '';
+  document.getElementById('fName').value  = n.name  || '';
+  document.getElementById('fUrl1').value  = n.url1  || '';
+  document.getElementById('fUrl2').value  = n.url2  || '';
+  document.getElementById('editModal').classList.add('open');
+  document.getElementById('fDept').focus();
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+  editId = null;
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('editModal')) closeModal();
+}
+
+function saveEdit() {
+  if (!editId) return;
+  const n = findNode(editId);
+  if (!n) return;
+  const dept = document.getElementById('fDept').value.trim();
+  if (!dept) {
+    document.getElementById('fDept').focus();
+    document.getElementById('fDept').style.borderColor = '#c0392b';
+    return;
+  }
+  document.getElementById('fDept').style.borderColor = '';
+  n.dept  = dept;
+  n.title = document.getElementById('fTitle').value.trim();
+  n.name  = document.getElementById('fName').value.trim();
+  n.url1  = document.getElementById('fUrl1').value.trim();
+  n.url2  = document.getElementById('fUrl2').value.trim();
+  closeModal();
+  render();
+  showToast('✅ 保存しました');
+}
+
+document.getElementById('editModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+  if (e.key === 'Escape') closeModal();
+});
+
+// ═══════════════════════════════════════════════════
+// ノード追加・削除
+// ═══════════════════════════════════════════════════
+
+function addChild(parentId) {
+  const parent = findNode(parentId);
+  if (!parent) return;
+  const newNode = { id: uid(), dept: '新しい部署', title: '', name: '', url1: '', url2: '', children: [] };
+  parent.children.push(newNode);
+  render();
+  setTimeout(() => openEdit(newNode.id), 80);
+}
+
+let pendingDeleteId = null;
+function confirmDelete(id) {
+  pendingDeleteId = id;
+  const n = findNode(id);
+  const childCount = countDescendants(id);
+  let msg = `「${n.dept}」を削除しますか？`;
+  if (childCount > 0) msg += `\n（配下の ${childCount} ノードも同時に削除されます）`;
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmDlg').classList.add('open');
+}
+
+function countDescendants(id) {
+  const n = findNode(id);
+  if (!n || !n.children.length) return 0;
+  return n.children.reduce((acc, c) => acc + 1 + countDescendants(c.id), 0);
+}
+
+function closeConfirm() {
+  document.getElementById('confirmDlg').classList.remove('open');
+  pendingDeleteId = null;
+}
+
+function confirmYes() {
+  if (!pendingDeleteId) return;
+  const par = findParent(pendingDeleteId);
+  if (par) par.children = par.children.filter(c => c.id !== pendingDeleteId);
+  closeConfirm();
+  render();
+  showToast('🗑 削除しました');
+}
+
+// ═══════════════════════════════════════════════════
+// 保存 / 読込 / 印刷
+// ═══════════════════════════════════════════════════
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '組織図_' + dateStr() + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('💾 JSONで保存しました');
+}
+
+function triggerImport() {
+  document.getElementById('jsonInput').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      tree = JSON.parse(ev.target.result);
+      render();
+      showToast('📂 読み込みました');
+    } catch (err) {
+      alert('JSONの読み込みに失敗しました。\n' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function printChart() {
+  window.print();
+}
+
+function exportHTML() {
+  const treeJson = JSON.stringify(tree, null, 2);
+  const originalHTML = document.documentElement.outerHTML;
+  const updatedHTML = originalHTML.replace(
+    /let notionSyncData\s*=\s*null;?\s*\/\*[^*]*\*\//,
+    'let notionSyncData = ' + treeJson + '; /* __NOTION_SYNC_DATA__ */'
+  );
+  const blob = new Blob([updatedHTML], { type: 'text/html; charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '組織図_' + dateStr() + '.html';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📄 HTMLで保存しました');
+}
+
+// ═══════════════════════════════════════════════════
+// Notion同期機能
+// ═══════════════════════════════════════════════════
+
+function openNotionPanel() {
+  document.getElementById('notionPanel').style.display = 'flex';
+  document.getElementById('notionStatus').style.display = 'none';
+  setTimeout(() => document.getElementById('notionToken').focus(), 100);
+}
+
+function closeNotionPanel() {
+  document.getElementById('notionPanel').style.display = 'none';
+}
+
+// パネル外クリックで閉じる
+document.getElementById('notionPanel').addEventListener('click', function(e) {
+  if (e.target === this) closeNotionPanel();
+});
+
+async function syncFromNotion() {
+  const token  = document.getElementById('notionToken').value.trim();
+  const dbId   = document.getElementById('notionDbId').value.trim();
+  const status = document.getElementById('notionStatus');
+  const btn    = document.getElementById('syncBtn');
+
+  if (!token) {
+    showNotionStatus('⚠️ APIキーを入力してください', 'warn'); return;
+  }
+  if (!token.startsWith('secret_') && !token.startsWith('ntn_')) {
+    showNotionStatus('⚠️ APIキーは "ntn_" または "secret_" で始まる文字列です', 'warn'); return;
+  }
+  if (!dbId) {
+    showNotionStatus('⚠️ データベースIDを入力してください', 'warn'); return;
+  }
+
+  btn.textContent = '取得中...';
+  btn.disabled = true;
+  showNotionStatus('⏳ Notionからデータを取得しています...', 'info');
+
+  try {
+    const rows = await fetchNotionDatabase(token, dbId);
+    const newTree = buildNotionTree(rows);
+    tree = newTree;
+    closeNotionPanel();
+    render();
+    showToast(`✅ Notion同期完了（${rows.length}件）`);
+  } catch (err) {
+    showNotionStatus('❌ ' + err.message, 'error');
+  } finally {
+    btn.textContent = '同期する';
+    btn.disabled = false;
+  }
+}
+
+function showNotionStatus(msg, type) {
+  const el = document.getElementById('notionStatus');
+  el.style.display = 'block';
+  el.textContent = msg;
+  const colors = {
+    info:  { bg:'#eef2f7', color:'#2c55a0' },
+    warn:  { bg:'#fef9e7', color:'#b7770d' },
+    error: { bg:'#fdf2f2', color:'#c0392b' },
+  };
+  const c = colors[type] || colors.info;
+  el.style.background = c.bg;
+  el.style.color = c.color;
+}
+
+async function fetchNotionDatabase(token, dbId) {
+  // CORS対応のため公開プロキシ経由でNotion APIを呼び出す
+  const PROXY = 'https://corsproxy.io/?';
+  const url = `${PROXY}${encodeURIComponent(`https://api.notion.com/v1/databases/${dbId}/query`)}`;
+
+  const rows = [];
+  let cursor = null;
+
+  for (let page = 0; page < 10; page++) {
+    const body = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+        'x-requested-with': 'XMLHttpRequest',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let errMsg = `Notion APIエラー (${resp.status})`;
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson.message) errMsg += ': ' + errJson.message;
+        if (resp.status === 401) errMsg = 'APIキーが無効です。正しいキーを入力してください。';
+        if (resp.status === 404) errMsg = 'データベースが見つかりません。インテグレーションの接続設定を確認してください。';
+      } catch(e) {}
+      throw new Error(errMsg);
+    }
+
+    const data = await resp.json();
+    rows.push(...(data.results || []));
+    if (!data.has_more) break;
+    cursor = data.next_cursor;
+  }
+
+  return rows;
+}
+
+function getPropText(prop) {
+  if (!prop) return '';
+  const t = prop.type;
+  if (t === 'title')     return (prop.title     || []).map(r => r.plain_text).join('');
+  if (t === 'rich_text') return (prop.rich_text  || []).map(r => r.plain_text).join('');
+  if (t === 'url')       return prop.url || '';
+  if (t === 'email')     return prop.email || '';
+  if (t === 'phone_number') return prop.phone_number || '';
+  return '';
+}
+
+function buildNotionTree(rows) {
+  const nodes = {};
+
+  for (const row of rows) {
+    const p    = row.properties || {};
+    const dept = getPropText(p['部署名']);
+    if (!dept) continue;
+
+    let url1 = getPropText(p['HP']);
+    let url2 = getPropText(p['Linked-in']);
+    if (url1 && !url1.startsWith('http')) url1 = 'https://' + url1;
+    if (url2 && !url2.startsWith('http')) url2 = 'https://' + url2;
+
+    nodes[dept] = {
+      id: row.id,
+      dept,
+      title:   getPropText(p['役職']),
+      name:    getPropText(p['氏名']),
+      url1,
+      url2,
+      _parent: getPropText(p['親部署']),
+      children: [],
+    };
+  }
+
+  const roots = [];
+  for (const [dept, node] of Object.entries(nodes)) {
+    const par = node._parent;
+    if (par && nodes[par]) {
+      nodes[par].children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  function clean(n) { delete n._parent; n.children.forEach(clean); return n; }
+  roots.forEach(clean);
+
+  if (roots.length === 1) return roots[0];
+  if (roots.length === 0) return { id:'root', dept:'データなし', title:'', name:'', url1:'', url2:'', children:[] };
+  return { id:'root', dept:'組織', title:'', name:'', url1:'', url2:'', children: roots };
+}
+
+// ═══════════════════════════════════════════════════
+// ズーム機能
+// ═══════════════════════════════════════════════════
+
+let currentScale = 1.0;
+const SCALE_STEP = 0.1;
+const SCALE_MIN  = 0.2;
+const SCALE_MAX  = 2.0;
+
+function applyScale(scale) {
+  currentScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale));
+  const sw = document.getElementById('chartScaleWrap');
+  sw.style.transform = `scale(${currentScale})`;
+  document.getElementById('zoomLabel').textContent = Math.round(currentScale * 100) + '%';
+}
+
+function zoomIn()  { applyScale(currentScale + SCALE_STEP); }
+function zoomOut() { applyScale(currentScale - SCALE_STEP); }
+
+function fitAll() {
+  const wrap  = document.getElementById('chartWrap');
+  const inner = document.getElementById('chartInner');
+
+  // いったん scale=1 に戻して実サイズを計測
+  applyScale(1.0);
+
+  const availW = wrap.clientWidth  - 80;
+  const availH = wrap.clientHeight - 100;
+  const innerW = inner.scrollWidth;
+  const innerH = inner.scrollHeight;
+
+  const scaleW = availW / innerW;
+  const scaleH = availH / innerH;
+  const fit    = Math.min(scaleW, scaleH, 1.0); // 拡大はしない
+
+  applyScale(fit);
+  showToast('🔍 全体を表示しました（' + Math.round(fit * 100) + '%）');
+}
+
+function dateStr() {
+  const d = new Date();
+  return d.getFullYear() + ('0'+(d.getMonth()+1)).slice(-2) + ('0'+d.getDate()).slice(-2);
+}
+
+// ═══════════════════════════════════════════════════
+// トースト通知
+// ═══════════════════════════════════════════════════
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════════════
+// 印刷スタイル
+// ═══════════════════════════════════════════════════
+const printStyle = document.createElement('style');
+printStyle.media = 'print';
+printStyle.textContent = `
+  .toolbar, .drop-hint, .zoom-controls { display: none !important; }
+  body { background: white; }
+  #chartWrap { padding: 20px; }
+  #chartScaleWrap { transform: none !important; }
+  .org-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+`;
+document.head.appendChild(printStyle);
+
+// ═══════════════════════════════════════════════════
+// リサイズ時に線を再描画
+// ═══════════════════════════════════════════════════
+window.addEventListener('resize', () => setTimeout(drawLines, 100));
+
+// ═══════════════════════════════════════════════════
+// 初期レンダリング
+// ═══════════════════════════════════════════════════
+render();
+</script>
+
+
+</body></html>
